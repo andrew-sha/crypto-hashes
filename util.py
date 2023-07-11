@@ -1,4 +1,5 @@
 import constants
+import hashlib
 
 # bit operations for bit strings
 def AND(x, y):
@@ -82,18 +83,25 @@ def sigma_1(x):
     return XOR(XOR(ROTR(x, 17), ROTR(x, 19)), rshift(x, 10))
 
 # functions for preprocessing message
+def encode(m):
+    '''
+    unicode message
+    '''
+    encoded_message = ''
+    for char in m:
+        encoded_message += bin(ord(char))[2:].zfill(8)
+    return encoded_message
+
 def pad_message(m):
     '''
     m is a bit string 
     convert the string m into a bit string whose length is a multiple of 512
     '''
-    # number of zeros to append after the 1 
-    num_zeros = 512 * (len(m) // 512) + 448  - (len(m) + 1) 
-    # number of zeros to append to the binary representation of the message length
-    num_zeros_binary = 64 - len(bin(len(m))[2:])
+    padded = m + '1'
+    while (len(padded) % 512) != 448:
+        padded += '0'
+    return padded + bin(len(m))[2:].zfill(64)
 
-    # return padded string
-    return m + '1' + (num_zeros * '0') + (num_zeros_binary * '0') + bin(len(m))[2:]
 
 def parse_message(m, k):
     '''
@@ -124,46 +132,53 @@ def compute_hash(m):
     m is the message to be hashed
     '''
     # initialize working variables for first iteration
-    working_variables = [bin(h)[2:].zfill(32)  for h in constants.INITIAL_HASHES]
+    #working_variables = [bin(h)[2:].zfill(32)  for h in constants.INITIAL_HASHES]
 
     # parse message into blocks
     blocks = parse_message(pad_message(m), 512)
 
     # initialize intermediate hash values
-    hashes = [bin(h)[2:].zfill(32)  for h in constants.INITIAL_HASHES]
+    hashes = [bin(h)[2:].zfill(32) for h in constants.INITIAL_HASHES]
 
     # main loop
     for i in range(len(blocks)):
         # generate schedule
         schedule = generate_schedule(blocks[i])
 
+        # initialize working variables
+        a = hashes[0]
+        b = hashes[1]
+        c = hashes[2]
+        d = hashes[3]
+        e = hashes[4]
+        f = hashes[5]
+        g = hashes[6]
+        h = hashes[7]
+
         # update working variables
         for t in range(64):
-            T_1 = bitadd(bitadd(bitadd(bitadd(working_variables[7], SIGMA_1(working_variables[4]), 32), Ch(working_variables[4], working_variables[5], working_variables[6]), 32), bin(constants.CONSTANTS[t])[2:].zfill(32) , 32), schedule[t], 32)
-            T_2 = bitadd(SIGMA_0(working_variables[0]), Maj(working_variables[0], working_variables[1], working_variables[2]), 32)
-            working_variables[7] = working_variables[6]
-            working_variables[6] = working_variables[5]
-            working_variables[5] = working_variables[4]
-            working_variables[4] = bitadd(working_variables[3], T_1, 32)
-            working_variables[3] = working_variables[2]
-            working_variables[2] = working_variables[1]
-            working_variables[1] = working_variables[0]
-            working_variables[0] = bitadd(T_1, T_2, 32)
+            T_1 = bitadd(bitadd(bitadd(bitadd(h, SIGMA_1(e), 32), Ch(e, f, g), 32), bin(constants.CONSTANTS[t])[2:].zfill(32) , 32), schedule[t], 32)
+            T_2 = bitadd(SIGMA_0(a), Maj(a, b, c), 32)
+            h = g
+            g = f
+            f = e
+            e = bitadd(d, T_1, 32)
+            d = c
+            c = b
+            b = a
+            a = bitadd(T_1, T_2, 32)
         
         # update intermediate hashes
+        working_variables = [a, b, c, d, e, f, g, h]
         for j in range(len(hashes)):
             hashes[j] = bitadd(working_variables[j], hashes[j], 32)
 
-        return hashes
+    return hashes
 
 
-def SHA256(m: str):
+def SHA256(m):
     # encode message using unicode
-    encoded_message = ''
-    for char in m:
-        encoded_message += bin(ord(char))[2:].zfill(8)
-    
-    digest = compute_hash(encoded_message)
+    digest = compute_hash(encode(m))
     
     # convert digest from sequence of 32-bit blocks to string of 64 hex characters
     for i in range(len(digest)):
@@ -172,4 +187,12 @@ def SHA256(m: str):
     return ''.join(digest)
 
 if __name__ == '__main__':
-    print(SHA256('satoshi pays 10 bitcoin to andrew'))
+    long = 'a' * 1000
+    test_vectors = [
+    'abc',
+    '',
+    'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq',
+    'abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu',
+    long]
+    for word in test_vectors:
+        print(SHA256(word) == hashlib.sha256(word.encode()).hexdigest())
