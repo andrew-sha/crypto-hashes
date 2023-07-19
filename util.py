@@ -34,11 +34,23 @@ def sigma_1(x):
     return ROTR(x, 17) ^ ROTR(x, 19) ^ (x >> 10)
 
 '''MD5'''
+def F(x, y, z):
+    return (x & y) | (~x & z)
+
+def G(x, y, z):
+    return (x & z) | (y & ~z)
+
+def H(x, y, z):
+    return x ^ y ^ z
+
+def I(x, y, z):
+    return y ^ (x | ~z)
+
 
 '''
 PREPROCESSING
 '''
-def pad_message(m: str) -> str:
+def pad_message(m: str, byteorder: str) -> str:
     # pad message such that its length in bits is a multiple 512
 
     # get number of bits in original message
@@ -51,14 +63,14 @@ def pad_message(m: str) -> str:
     while ((len(m) * 8) % 512) != 448:
         m += b'\x00'
 
-    return (m + original_length.to_bytes(8, 'big'))
+    return (m + original_length.to_bytes(8, byteorder))
 
 def parse_message(m: str, k: int) -> List[str]:
     # break a string (e.g. sequence of bytes) into blocks of size k
     N = int(len(m) / k)
     return [m[i * k: (i + 1) * k] for i in range(N)]
 
-def generate_schedule(block: str) -> List[str]:
+def generate_schedule_sha256(block: str) -> List[str]:
     # convert a 64 byte (512 bit) block into a schedule during one iteration of the hash computation
     schedule = []
     words = parse_message(block, 4)
@@ -80,7 +92,7 @@ HASH COMPUTATIONS
 '''
 def compute_sha256(m: str) -> List[str]:
     # parse message into 64 byte (512 bit) blocks
-    blocks = parse_message(pad_message(m), 64)
+    blocks = parse_message(pad_message(m, 'big'), 64)
 
     # initialize hash values
     hashes = constants.INITIAL_HASHES_SHA256
@@ -88,7 +100,7 @@ def compute_sha256(m: str) -> List[str]:
     # main loop
     for i in range(len(blocks)):
         # generate schedule
-        schedule = generate_schedule(blocks[i])
+        schedule = generate_schedule_sha256(blocks[i])
 
         # initialize working variables
         [a, b, c, d, e, f, g, h] = [h for h in hashes]
@@ -114,63 +126,47 @@ def compute_sha256(m: str) -> List[str]:
     # return list of final hashes as bytes
     return [h.to_bytes(4, 'big') for h in hashes]
 
-''' STILL UNDER WORKS
 def compute_md5(m: str) -> List[str]:
-    # parse message into blocks
-    blocks = parse_message(pad_message(m), 512)
+    # parse message into 64 byte (512 bit) blocks
+    blocks = parse_message(pad_message(m, 'little'), 64)
 
-    # initialize intermediate hash values
-    A = bin(constants.INITIAL_HASHES_MD5_2[0])[2:].zfill(32)
-    B = bin(constants.INITIAL_HASHES_MD5_2[1])[2:].zfill(32)
-    C = bin(constants.INITIAL_HASHES_MD5_2[2])[2:].zfill(32)
-    D = bin(constants.INITIAL_HASHES_MD5_2[3])[2:].zfill(32)
+    # initialize hash values
+    hashes = constants.INITIAL_HASHES_MD5
 
     # main loop
     for i in range(len(blocks)):
-        # break block into 32-bit words
-        schedule = parse_message(blocks[i], 32)
+        # break block into 4-byte (32-bit) words
+        schedule = parse_message(blocks[i], 4)
 
         # initialize working variables
-        AA = A
-        BB = B
-        CC = C
-        DD = D
+        [A, B, C, D] = hashes
         
         # update working variables
         for j in range(64):
             if j in range(16):
-                E = F(BB, CC, DD)
+                E = F(B, C, D)
                 k = j
             elif j in range(16, 32):
-                E = G(BB, CC, DD)
+                E = G(B, C, D)
                 k = (j * 5 + 1) % 16
             elif j in range(32, 48):
-                E = H(BB, CC, DD)
+                E = H(B, C, D)
                 k = (j * 3 + 5) % 16
             elif j in range(48, 64):
-                E = I(BB, CC, DD)
+                E = I(B, C, D)
                 k = (j * 7) % 16
         
-            E = bitadd(E, bitadd(AA, bitadd(bin(constants.CONSTANTS_MD5[j])[2:].zfill(32), schedule[k], 32), 32), 32)
-            AA = DD
-            DD = CC
-            CC = BB
-            BB = bitadd(BB, ROTR(E, 32 - constants.SHIFTS_MD5[j]), 32)
-            '''
-            T = DD
-            DD = CC
-            CC = BB
-            BB = bitadd(BB, bitadd(E, bitadd(AA, bitadd(bin(constants.CONSTANTS_MD5[j])[2:].zfill(32), schedule[k], 32), 32), 32), 32)
-            AA = T
-            '''
+            E = (E + A + constants.CONSTANTS_MD5[j] + int.from_bytes(schedule[k], 'little')) % MODULUS 
+            A = D
+            D = C
+            C = B
+            B = (B + ROTR(E, 32 - constants.SHIFTS_MD5[j])) % MODULUS
         
-        A = bitadd(A, AA, 32)
-        B = bitadd(B, BB, 32)
-        C = bitadd(C, CC, 32)
-        D = bitadd(D, DD, 32)
+        working_variables = [A, B, C, D]
+        for p in range(len(hashes)):
+            hashes[p] = (hashes[p] + working_variables[p]) % MODULUS
     
-    return [A, B, C, D]
-'''
+    return [h.to_bytes(4, 'little') for h in hashes]
 
 
 def SHA256(m: str) -> str:
@@ -178,7 +174,15 @@ def SHA256(m: str) -> str:
     digest = compute_sha256(m.encode())    
     return b''.join(digest).hex()
 
+def MD5(m: str) -> str:
+    # encode message using unicode
+    digest = compute_md5(m.encode())
+    return b''.join(digest).hex()
+
 if __name__ == '__main__':
-    m = ''
-    print(SHA256(m))
-    print(hashlib.sha256(m.encode()).hexdigest())
+    m = 'hdfajkw hjiowjhiowueiwoaunjeviwoaeuniaowejnionwviewjiodjwiojfiwoaeioajdioawdoiamdakdadwakdas'
+    guess = str(MD5(m))
+    answer = str(hashlib.md5(m.encode()).hexdigest())
+    print(guess)
+    print(answer)
+    print(guess == answer)
