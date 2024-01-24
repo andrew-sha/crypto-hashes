@@ -2,9 +2,6 @@ import constants
 from typing import List
 import hashlib
 
-
-MODULUS = 2**32
-
 '''
 SUBROUTINES
 '''
@@ -82,7 +79,7 @@ def generate_schedule_sha256(block: str) -> List[str]:
             s1 = int.from_bytes(schedule[t-7], 'big')
             s2 = sigma_0(int.from_bytes(schedule[t-15], 'big'))
             s3 = int.from_bytes(schedule[t-16], 'big')
-            s4 = (s0 + s1 + s2 + s3) % MODULUS
+            s4 = (s0 + s1 + s2 + s3) % constants.MODULUS
             schedule.append(s4.to_bytes(4, 'big'))
 
     return schedule
@@ -107,21 +104,21 @@ def compute_sha256(m: str) -> List[str]:
 
         # update working variables
         for t in range(64):
-            T_1 = (h + SIGMA_1(e) + Ch(e, f, g) + constants.CONSTANTS_SHA256[t] + int.from_bytes(schedule[t], 'big')) % MODULUS
-            T_2 = (SIGMA_0(a) + Maj(a, b, c)) % MODULUS
+            T_1 = (h + SIGMA_1(e) + Ch(e, f, g) + constants.CONSTANTS_SHA256[t] + int.from_bytes(schedule[t], 'big')) % constants.MODULUS
+            T_2 = (SIGMA_0(a) + Maj(a, b, c)) % constants.MODULUS
             h = g
             g = f
             f = e
-            e = (d + T_1) % MODULUS
+            e = (d + T_1) % constants.MODULUS
             d = c
             c = b
             b = a
-            a = (T_1 + T_2) % MODULUS
+            a = (T_1 + T_2) % constants.MODULUS
         
         # update hashes
         working_variables = [a, b, c, d, e, f, g, h]
         for j in range(len(hashes)):
-            hashes[j] = (working_variables[j] + hashes[j]) % MODULUS
+            hashes[j] = (working_variables[j] + hashes[j]) % constants.MODULUS
 
     # return list of final hashes as bytes
     return [h.to_bytes(4, 'big') for h in hashes]
@@ -156,15 +153,15 @@ def compute_md5(m: str) -> List[str]:
                 E = I(B, C, D)
                 k = (j * 7) % 16
         
-            E = (E + A + constants.CONSTANTS_MD5[j] + int.from_bytes(schedule[k], 'little')) % MODULUS 
+            E = (E + A + constants.CONSTANTS_MD5[j] + int.from_bytes(schedule[k], 'little')) % constants.MODULUS 
             A = D
             D = C
             C = B
-            B = (B + ROTR(E, 32 - constants.SHIFTS_MD5[j])) % MODULUS
+            B = (B + ROTR(E, 32 - constants.SHIFTS_MD5[j])) % constants.MODULUS
         
         working_variables = [A, B, C, D]
         for p in range(len(hashes)):
-            hashes[p] = (hashes[p] + working_variables[p]) % MODULUS
+            hashes[p] = (hashes[p] + working_variables[p]) % constants.MODULUS
     
     return [h.to_bytes(4, 'little') for h in hashes]
 
@@ -180,7 +177,7 @@ def MD5(m: str) -> str:
     return b''.join(digest).hex()
 
 if __name__ == '__main__':
-    m = 'hdfajkw hjiowjhiowueiwoaunjeviwoaeuniaowejnionwviewjiodjwiojfiwoaeioajdioawdoiamdakdadwakdas'
+    m = 'Lorem ipsum dolor sit amet'
     guess = str(MD5(m))
     answer = str(hashlib.md5(m.encode()).hexdigest())
     print(guess)
